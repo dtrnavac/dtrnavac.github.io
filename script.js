@@ -1,16 +1,31 @@
-let chart = document.getElementById('myChart');
-
 $(document).ready(function () {
     if ($('#myChart').html() === "") {
-        $.get('merenje.CSV', function (data) { dataToArrays(data) }, 'text');
+        $.get('merenje.csv', function (data) { dataToArrays(data) }, 'text');
     }
 
     document.getElementById('csvFile').addEventListener('change', upload, false);
+
+    var vratiNaVrhBtn = document.getElementById("vratiNaVrhBtn");
+
+    window.addEventListener("scroll", function () {
+        if (window.pageYOffset > 100) {
+            vratiNaVrhBtn.style.display = "block";
+        } else {
+            vratiNaVrhBtn.style.display = "none";
+        }
+    });
+
+    vratiNaVrhBtn.addEventListener("click", function () {
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth"
+        });
+    });
 });
 
 function dataToArrays(data) {
     let rawData = Papa.parse(data);
-   
+
     createChart(rawData);
 }
 
@@ -39,9 +54,7 @@ function createChart(parsedData) {
     }
 
     let commentIndex = headingArray.findIndex(element => {
-        if (element.title === 'Komentar') {
-            return true;
-        }
+        return element.title.toLowerCase() === 'komentar';
     });
 
     if (commentIndex !== -1) {
@@ -88,7 +101,7 @@ function createChart(parsedData) {
     for (let i = 1; i < dataMatrix.length; i++) {
         let label = dataMatrix[i][0];
 
-        // Exclude the "Comment" data from the dataset
+        // Exclude the "Komentar" data from the dataset
         if (commentIndex !== -1) {
             dataMatrix[i].splice(commentIndex, 1);
         }
@@ -96,11 +109,14 @@ function createChart(parsedData) {
         let datasetData = dataMatrix[i];
         datasetData.splice(0, 3);
 
+        const color = getColor();
+        console.log('Boja za dataset ' + label + ':', color);
+
         datasets.push({
             label: label,
             data: datasetData,
 
-            borderColor: '#' + getColor(),
+            borderColor: '#' + color,
             borderWidth: '1',
 
             pointRadius: 0,
@@ -112,13 +128,13 @@ function createChart(parsedData) {
     let myChart = document.getElementById('myChart').getContext('2d');
     let type = 'line';
     let data = {
-        labels,
+        labels: labels.map(label => formatirajVreme(label)),
         datasets,
     };
     let options = {
         title: {
             display: true,
-            text: ['Prikaz merenja'],
+            text: ['Prikaz rezultata merenja'],
             fontSize: 23,
         },
         legend: {
@@ -130,36 +146,47 @@ function createChart(parsedData) {
         tooltips: {
             intersect: false,
             callbacks: {
-                title: (toolTipItem) => {
-                    return headingArray[0].title + ": " + toolTipItem[0].label + " " + headingArray[0].unit;
+                title: (tooltipItem, data) => {
+                    let label = tooltipItem[0].xLabel;
+                    return 'Vreme: ' + label + ' m/s';
                 },
-                label: (toolTipItem) => {
-                    return toolTipItem.yLabel + " " + headingArray[toolTipItem.datasetIndex + 1].unit;
-
-                },
-            },
-        },
+                label: (tooltipItem, data) => {
+                    let datasetLabel = data.datasets[tooltipItem.datasetIndex].label || '';
+                    return datasetLabel + ': ' + tooltipItem.yLabel + ' ' + headingArray[tooltipItem.datasetIndex + 1].unit;
+                }
+            }
+        }
     };
 
     chart = new Chart(myChart, { type, data, options });
 }
 
+function formatirajVreme(vreme) {
+    var minuti = Math.floor(vreme / 60);
+    var sekunde = vreme % 60;
+
+    sekunde = Math.round(sekunde / 5) * 5;
+
+    if (sekunde === 60) {
+        minuti++;
+        sekunde = 0;
+    }
+
+    return minuti.toString().padStart(2, '0') + ':' + sekunde.toString().padStart(2, '0');
+}
+
+let colorIndex = 0;
+
 function getColor() {
-    colors = [
-        'FF0000',
-        'FF4500',
-        'C71585',
-        'FF8C00',
-        'FF00FF',
-        '1E90FF',
-        '0000FF',
-        'D2691E',
-        'CD5C5C',
-        '6A5ACD',
-        '32CD32',
-        '008080',
-    ]
-    return colors[Math.floor(Math.random() * colors.length)]
+    const colors = [
+        'FF5733', 'FFA533', '77FF33', 'CCCC00', '3366FF', 'FF33FF', '33FFFF', 'FF9933', '66FF33',
+    ];
+
+    const color = colors[colorIndex];
+
+    colorIndex = (colorIndex + 1) % colors.length;
+
+    return color;
 }
 
 function upload(evt) {
@@ -185,3 +212,32 @@ function upload(evt) {
         console.log('Unable to read ' + file.fileName);
     };
 }
+
+function downloadDataAsExcel() {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    let table = document.getElementById('parsedData');
+    let rows = table.querySelectorAll('tr');
+
+    rows.forEach(function (row) {
+        let rowData = [];
+        let cols = row.querySelectorAll('td');
+        cols.forEach(function (col) {
+            rowData.push(col.textContent);
+        });
+        let rowCSV = rowData.join(",");
+        csvContent += rowCSV + "\r\n";
+    });
+
+    // Create a Blob containing the CSV data
+    let blob = new Blob([csvContent], { type: 'data:text/csv;charset=utf-8;' });
+
+    // Create a link element and trigger the download
+    let link = document.createElement("a");
+    link.setAttribute("href", URL.createObjectURL(blob));
+    link.setAttribute("download", "data.csv");
+    document.body.appendChild(link);
+    link.click();
+}
+
+// Attach the function to the button click event
+document.getElementById('downloadBtn').addEventListener('click', downloadDataAsExcel);
